@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS words (
+    id SERIAL PRIMARY KEY,
+    text TEXT NOT NULL,
+    category TEXT NOT NULL
+);
