@@ -123,7 +123,8 @@ func main() {
 func customErrorHandler(c *fiber.Ctx, err error) error {
 	code := fiber.StatusInternalServerError
 
-	if e, ok := err.(*fiber.Error); ok {
+	e := &fiber.Error{}
+	if errors.As(err, &e) {
 		code = e.Code
 	}
 

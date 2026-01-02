@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/LautaroBlasco23/impostor/internal/core/game/model"
+	"github.com/redis/go-redis/v9"
 )
 
 type GameRepository interface {
@@ -45,7 +45,7 @@ func (r *gameRepository) GetByID(ctx context.Context, id string) (*model.Game, e
 	key := fmt.Sprintf("game:%s", id)
 	data, err := r.client.Get(ctx, key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return nil, fmt.Errorf("game not found")
 		}
 		return nil, err
@@ -63,7 +63,7 @@ func (r *gameRepository) GetByRoomID(ctx context.Context, roomID string) (*model
 	roomKey := fmt.Sprintf("room:%s:game", roomID)
 	gameID, err := r.client.Get(ctx, roomKey).Result()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return nil, fmt.Errorf("no active game in room")
 		}
 		return nil, err

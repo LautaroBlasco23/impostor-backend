@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/LautaroBlasco23/impostor/internal/core/room/model"
+	"github.com/redis/go-redis/v9"
 )
 
 type RoomRepository interface {
@@ -40,7 +40,7 @@ func (r *roomRepository) GetByID(ctx context.Context, id string) (*model.Room, e
 	key := fmt.Sprintf("room:%s", id)
 	data, err := r.client.Get(ctx, key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return nil, fmt.Errorf("room not found")
 		}
 		return nil, err

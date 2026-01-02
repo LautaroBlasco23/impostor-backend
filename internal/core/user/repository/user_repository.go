@@ -49,7 +49,7 @@ func (r *userRepository) GetByID(ctx context.Context, id string) (*model.User, e
 	key := fmt.Sprintf("user:%s", id)
 	data, err := r.client.Get(ctx, key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return nil, fmt.Errorf("user not found")
 		}
 		return nil, err

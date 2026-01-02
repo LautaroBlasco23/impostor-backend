@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+
 	"github.com/LautaroBlasco23/impostor/internal/core/word/model"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
