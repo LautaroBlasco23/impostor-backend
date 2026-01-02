@@ -96,9 +96,11 @@ func (h *Hub) registerClient(client *Client) {
 
 func (h *Hub) unregisterClient(client *Client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 
 	if _, ok := h.clients[client.ID]; ok {
+		roomID := client.RoomID
+		clientID := client.ID
+
 		delete(h.clients, client.ID)
 		close(client.Send)
 
@@ -112,7 +114,18 @@ func (h *Hub) unregisterClient(client *Client) {
 		}
 
 		log.Printf("Client %s unregistered from room %s", client.ID, client.RoomID)
+
+		h.mu.Unlock()
+
+		if roomID != "" {
+			h.BroadcastToRoom(roomID, EventUserLeft, map[string]string{
+				"user_id": clientID,
+			})
+		}
+		return
 	}
+
+	h.mu.Unlock()
 }
 
 func (h *Hub) broadcastToRoom(event Event) {
@@ -200,5 +213,69 @@ func (c *Client) WritePump() {
 		if err != nil {
 			break
 		}
+	}
+}
+
+func (h *Hub) BroadcastToRoomExcept(roomID string, excludeClientID string, eventType EventType, payload interface{}) {
+	event := Event{
+		Type:    eventType,
+		RoomID:  roomID,
+		Payload: payload,
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	room, exists := h.rooms[roomID]
+	if !exists {
+		return
+	}
+
+	message, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("Error marshaling event: %v", err)
+		return
+	}
+
+	for _, client := range room {
+		if client.ID == excludeClientID {
+			continue
+		}
+		select {
+		case client.Send <- message:
+		default:
+			close(client.Send)
+			delete(h.clients, client.ID)
+			delete(room, client.ID)
+		}
+	}
+}
+
+func (h *Hub) SendToClient(clientID, roomID string, eventType EventType, payload interface{}) {
+	event := Event{
+		Type:    eventType,
+		RoomID:  roomID,
+		Payload: payload,
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	client, exists := h.clients[clientID]
+	if !exists {
+		return
+	}
+
+	message, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("Error marshaling event: %v", err)
+		return
+	}
+
+	select {
+	case client.Send <- message:
+	default:
+		close(client.Send)
+		delete(h.clients, client.ID)
 	}
 }

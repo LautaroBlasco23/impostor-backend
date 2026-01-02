@@ -114,11 +114,22 @@ func (s *gameService) StartGame(ctx context.Context, req *model.StartGameRequest
 		return nil, err
 	}
 
-	s.hub.BroadcastToRoom(req.RoomID, ws.EventGameStarted, map[string]interface{}{
-		"game_id":      game.ID,
-		"category":     game.Category,
-		"round_number": game.RoundNumber,
-	})
+	// Send personalized events to each client
+	for _, user := range users {
+		payload := map[string]interface{}{
+			"game_id":      game.ID,
+			"category":     game.Category,
+			"round_number": game.RoundNumber,
+			"impostor_id":  game.ImpostorID,
+		}
+
+		// Only send word to non-impostors
+		if user.ID != game.ImpostorID {
+			payload["current_word"] = game.CurrentWord
+		}
+
+		s.hub.SendToClient(user.ID, game.RoomID, ws.EventGameStarted, payload)
+	}
 
 	return game, nil
 }

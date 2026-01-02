@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-
 	"github.com/LautaroBlasco23/impostor/internal/core/word/model"
 	"github.com/LautaroBlasco23/impostor/internal/core/word/repository"
 )
@@ -13,6 +12,7 @@ type WordService interface {
 	GetWordsByCategory(ctx context.Context, category string) ([]*model.Word, error)
 	GetRandomWords(ctx context.Context, category string, limit int) ([]*model.Word, error)
 	GetAllWords(ctx context.Context) ([]*model.Word, error)
+	GetCategories(ctx context.Context) ([]string, error)
 	DeleteWord(ctx context.Context, id int) error
 }
 
@@ -29,11 +29,9 @@ func (s *wordService) CreateWord(ctx context.Context, req *model.CreateWordReque
 		Text:     req.Text,
 		Category: req.Category,
 	}
-
 	if err := s.repo.Create(ctx, word); err != nil {
 		return nil, err
 	}
-
 	return word, nil
 }
 
@@ -51,6 +49,10 @@ func (s *wordService) GetRandomWords(ctx context.Context, category string, limit
 
 func (s *wordService) GetAllWords(ctx context.Context) ([]*model.Word, error) {
 	return s.repo.GetAll(ctx)
+}
+
+func (s *wordService) GetCategories(ctx context.Context) ([]string, error) {
+	return s.repo.GetCategories(ctx)
 }
 
 func (s *wordService) DeleteWord(ctx context.Context, id int) error {

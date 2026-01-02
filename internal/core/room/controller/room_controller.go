@@ -34,7 +34,6 @@ func (c *RoomController) CreateRoom(ctx *fiber.Ctx) error {
 
 func (c *RoomController) GetRoom(ctx *fiber.Ctx) error {
 	id := ctx.Params("id")
-
 	room, err := c.service.GetRoom(ctx.Context(), id)
 	if err != nil {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -58,16 +57,31 @@ func (c *RoomController) GetAllRooms(ctx *fiber.Ctx) error {
 
 func (c *RoomController) SetCategory(ctx *fiber.Ctx) error {
 	roomID := ctx.Params("id")
-	leaderID := ctx.Get("X-User-ID")
 
-	var req model.SetCategoryRequest
+	var req struct {
+		Category string `json:"category" validate:"required"`
+		LeaderID string `json:"leader_id" validate:"required"`
+	}
+
 	if err := ctx.BodyParser(&req); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request body",
 		})
 	}
 
-	if err := c.service.SetCategory(ctx.Context(), roomID, leaderID, req.Category); err != nil {
+	if req.Category == "" {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Category is required",
+		})
+	}
+
+	if req.LeaderID == "" {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Leader ID is required",
+		})
+	}
+
+	if err := c.service.SetCategory(ctx.Context(), roomID, req.LeaderID, req.Category); err != nil {
 		return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": err.Error(),
 		})
@@ -80,7 +94,6 @@ func (c *RoomController) SetCategory(ctx *fiber.Ctx) error {
 
 func (c *RoomController) DeleteRoom(ctx *fiber.Ctx) error {
 	id := ctx.Params("id")
-
 	if err := c.service.DeleteRoom(ctx.Context(), id); err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/LautaroBlasco23/impostor/internal/core/user/model"
+	"github.com/redis/go-redis/v9"
 )
 
 type UserRepository interface {
@@ -37,8 +37,12 @@ func (r *userRepository) Create(ctx context.Context, user *model.User) error {
 		return err
 	}
 
-	roomKey := fmt.Sprintf("room:%s:users", user.RoomID)
-	return r.client.SAdd(ctx, roomKey, user.ID).Err()
+	if user.RoomID != "" {
+		roomKey := fmt.Sprintf("room:%s:users", user.RoomID)
+		return r.client.SAdd(ctx, roomKey, user.ID).Err()
+	}
+
+	return nil
 }
 
 func (r *userRepository) GetByID(ctx context.Context, id string) (*model.User, error) {
@@ -79,6 +83,26 @@ func (r *userRepository) GetByRoomID(ctx context.Context, roomID string) ([]*mod
 }
 
 func (r *userRepository) Update(ctx context.Context, user *model.User) error {
+	oldUser, err := r.GetByID(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	if oldUser.RoomID != user.RoomID {
+		if oldUser.RoomID != "" {
+			oldRoomKey := fmt.Sprintf("room:%s:users", oldUser.RoomID)
+			if err := r.client.SRem(ctx, oldRoomKey, user.ID).Err(); err != nil {
+				return err
+			}
+		}
+		if user.RoomID != "" {
+			newRoomKey := fmt.Sprintf("room:%s:users", user.RoomID)
+			if err := r.client.SAdd(ctx, newRoomKey, user.ID).Err(); err != nil {
+				return err
+			}
+		}
+	}
+
 	data, err := json.Marshal(user)
 	if err != nil {
 		return err

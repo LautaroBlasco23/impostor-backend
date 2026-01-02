@@ -54,14 +54,12 @@ func (c *WordController) GetWord(ctx *fiber.Ctx) error {
 
 func (c *WordController) GetWordsByCategory(ctx *fiber.Ctx) error {
 	category := ctx.Params("category")
-
 	words, err := c.service.GetWordsByCategory(ctx.Context(), category)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-
 	return ctx.JSON(words)
 }
 
@@ -75,7 +73,6 @@ func (c *WordController) GetRandomWords(ctx *fiber.Ctx) error {
 			"error": err.Error(),
 		})
 	}
-
 	return ctx.JSON(words)
 }
 
@@ -86,8 +83,17 @@ func (c *WordController) GetAllWords(ctx *fiber.Ctx) error {
 			"error": err.Error(),
 		})
 	}
-
 	return ctx.JSON(words)
+}
+
+func (c *WordController) GetCategories(ctx *fiber.Ctx) error {
+	categories, err := c.service.GetCategories(ctx.Context())
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+	return ctx.JSON(categories)
 }
 
 func (c *WordController) DeleteWord(ctx *fiber.Ctx) error {
