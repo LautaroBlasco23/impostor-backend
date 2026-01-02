@@ -148,6 +148,13 @@ func (s *gameService) Vote(ctx context.Context, req *model.VoteRequest) (*model.
 		return nil, err
 	}
 
+	if game.VoteCount == nil {
+		game.VoteCount = make(map[string]int)
+	}
+	if game.VotedUsers == nil {
+		game.VotedUsers = make(map[string]string)
+	}
+
 	if game.State != model.GameStatePlaying && game.State != model.GameStateVoting {
 		return nil, fmt.Errorf("game is not in playing state")
 	}
