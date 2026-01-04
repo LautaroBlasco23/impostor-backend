@@ -14,6 +14,8 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/LautaroBlasco23/impostor/internal/config"
 	gameController "github.com/LautaroBlasco23/impostor/internal/core/game/controller"
@@ -38,25 +40,51 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
 
+func run() error {
+	cfg := config.Load()
 	ctx := context.Background()
 
 	redisClient, err := database.NewRedisClient(ctx, cfg.RedisURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+		return err
 	}
-	defer redisClient.Close()
+	defer func() {
+		if err = redisClient.Close(); err != nil {
+			log.Printf("redis close error: %v", err)
+		}
+	}()
 
 	pgPool, err := database.NewPostgresPool(ctx, cfg.PostgresURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+		return err
 	}
 	defer pgPool.Close()
 
 	hub := ws.NewHub()
 	go hub.Run()
 
+	app := buildApp(cfg, pgPool, redisClient, hub)
+
+	go func() {
+		if err := app.Listen(":" + cfg.Port); err != nil {
+			log.Printf("server error: %v", err)
+		}
+	}()
+
+	return waitForShutdown(app)
+}
+
+func buildApp(
+	cfg *config.Config,
+	pgPool *pgxpool.Pool,
+	redisClient *redis.Client,
+	hub *ws.Hub,
+) *fiber.App {
 	wordRepository := wordRepo.NewWordRepository(pgPool)
 	wordSvc := wordService.NewWordService(wordRepository)
 	wordCtrl := wordController.NewWordController(wordSvc)
@@ -70,15 +98,20 @@ func main() {
 	userCtrl := userController.NewUserController(userSvc)
 
 	gameRepository := gameRepo.NewGameRepository(redisClient)
-	gameSvc := gameService.NewGameService(gameRepository, roomRepository, userRepository, wordRepository, hub)
+	gameSvc := gameService.NewGameService(
+		gameRepository,
+		roomRepository,
+		userRepository,
+		wordRepository,
+		hub,
+	)
 	gameCtrl := gameController.NewGameController(gameSvc)
 
 	wsCtrl := wsController.NewWebSocketController(hub)
 
 	app := fiber.New(fiber.Config{
-		AppName:               "Game Server",
-		DisableStartupMessage: false,
-		ErrorHandler:          customErrorHandler,
+		AppName:      "Game Server",
+		ErrorHandler: customErrorHandler,
 	})
 
 	app.Use(recover.New())
@@ -90,7 +123,6 @@ func main() {
 	}))
 
 	api := app.Group("/api/v1")
-
 	wordRoutes.RegisterRoutes(api.Group("/words"), wordCtrl)
 	roomRoutes.RegisterRoutes(api.Group("/rooms"), roomCtrl)
 	userRoutes.RegisterRoutes(api.Group("/users"), userCtrl)
@@ -99,32 +131,26 @@ func main() {
 	app.Use("/ws", wsCtrl.UpgradeMiddleware)
 	app.Get("/ws/:userId", websocket.New(wsCtrl.HandleConnection))
 
-	go func() {
-		if err := app.Listen(":" + cfg.Port); err != nil {
-			log.Fatalf("Failed to start server: %v", err)
-		}
-	}()
+	return app
+}
 
+func waitForShutdown(app *fiber.App) error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 
 	log.Println("Shutting down server...")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
-	}
-
-	log.Println("Server exited")
+	return app.ShutdownWithContext(ctx)
 }
 
 func customErrorHandler(c *fiber.Ctx, err error) error {
 	code := fiber.StatusInternalServerError
 
-	e := &fiber.Error{}
+	var e *fiber.Error
 	if errors.As(err, &e) {
 		code = e.Code
 	}
