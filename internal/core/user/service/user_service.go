@@ -23,10 +23,10 @@ type UserService interface {
 
 type userService struct {
 	repo repository.UserRepository
-	hub  *ws.Hub
+	hub  ws.HubBroadcaster
 }
 
-func NewUserService(repo repository.UserRepository, hub *ws.Hub) UserService {
+func NewUserService(repo repository.UserRepository, hub ws.HubBroadcaster) UserService {
 	return &userService{
 		repo: repo,
 		hub:  hub,
@@ -42,11 +42,9 @@ func (s *userService) CreateUser(ctx context.Context, req *model.CreateUserReque
 		IsAlive:   true,
 		CreatedAt: time.Now(),
 	}
-
 	if err := s.repo.Create(ctx, user); err != nil {
 		return nil, err
 	}
-
 	return user, nil
 }
 
@@ -63,24 +61,19 @@ func (s *userService) JoinRoom(ctx context.Context, userID, roomID string) error
 	if err != nil {
 		return err
 	}
-
 	if user.RoomID != "" {
 		return fmt.Errorf("user already in a room")
 	}
-
 	user.RoomID = roomID
 	if err := s.repo.Update(ctx, user); err != nil {
 		return err
 	}
-
 	s.hub.UpdateClientRoom(userID, roomID)
-
 	s.hub.BroadcastToRoom(roomID, ws.EventUserJoined, map[string]interface{}{
 		"user_id":  userID,
 		"nickname": user.Nickname,
 		"room_id":  roomID,
 	})
-
 	return nil
 }
 
@@ -89,18 +82,15 @@ func (s *userService) ToggleReady(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-
 	user.IsReady = !user.IsReady
 	if err := s.repo.Update(ctx, user); err != nil {
 		return err
 	}
-
 	s.hub.BroadcastToRoom(user.RoomID, ws.EventUserReady, map[string]interface{}{
 		"user_id":  userID,
 		"nickname": user.Nickname,
 		"is_ready": user.IsReady,
 	})
-
 	return nil
 }
 
@@ -109,17 +99,14 @@ func (s *userService) CheckAllReady(ctx context.Context, roomID string) (bool, e
 	if err != nil {
 		return false, err
 	}
-
 	if len(users) < 2 {
 		return false, nil
 	}
-
 	for _, user := range users {
 		if !user.IsReady {
 			return false, nil
 		}
 	}
-
 	return true, nil
 }
 
@@ -128,13 +115,11 @@ func (s *userService) DeleteUser(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-
 	if user.RoomID != "" {
 		s.hub.BroadcastToRoom(user.RoomID, ws.EventUserLeft, map[string]interface{}{
 			"user_id":  id,
 			"nickname": user.Nickname,
 		})
 	}
-
 	return s.repo.Delete(ctx, id)
 }

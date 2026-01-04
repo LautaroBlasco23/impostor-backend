@@ -92,14 +92,14 @@ func (r *userRepository) Update(ctx context.Context, user *model.User) error {
 	if oldUser.RoomID != user.RoomID {
 		if oldUser.RoomID != "" {
 			oldRoomKey := fmt.Sprintf("room:%s:users", oldUser.RoomID)
-			if err := r.client.SRem(ctx, oldRoomKey, user.ID).Err(); err != nil {
-				return err
+			if rmErr := r.client.SRem(ctx, oldRoomKey, user.ID).Err(); rmErr != nil {
+				return rmErr
 			}
 		}
 		if user.RoomID != "" {
 			newRoomKey := fmt.Sprintf("room:%s:users", user.RoomID)
-			if err := r.client.SAdd(ctx, newRoomKey, user.ID).Err(); err != nil {
-				return err
+			if addErr := r.client.SAdd(ctx, newRoomKey, user.ID).Err(); addErr != nil {
+				return addErr
 			}
 		}
 	}
