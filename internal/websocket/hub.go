@@ -194,7 +194,10 @@ func (h *Hub) UpdateClientRoom(clientID, newRoomID string) {
 func (c *Client) ReadPump(hub *Hub) {
 	defer func() {
 		hub.Unregister(c)
-		c.Conn.Close()
+		err := c.Conn.Close()
+		if err != nil {
+			log.Fatalf("error closing client connection: %v", err)
+		}
 	}()
 
 	for {
@@ -206,7 +209,12 @@ func (c *Client) ReadPump(hub *Hub) {
 }
 
 func (c *Client) WritePump() {
-	defer c.Conn.Close()
+	defer func() {
+		err := c.Conn.Close()
+		if err != nil {
+			log.Fatalf("error closing client connection, %v ", err)
+		}
+	}()
 
 	for message := range c.Send {
 		err := c.Conn.WriteMessage(websocket.TextMessage, message)
