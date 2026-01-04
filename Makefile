@@ -1,4 +1,4 @@
-.PHONY: help install-tools code-check dev prod-up prod-down prod-build db-up db-down db-remove
+.PHONY: help install-tools code-check dev prod-up prod-down prod-build db-up db-down db-remove test
 
 .DEFAULT_GOAL := help
 
@@ -8,6 +8,7 @@ help:
 	@echo "    install-tools      - Install Go tools (gofumpt, golangci-lint, air, gotestsum)"
 	@echo "    code-check         - Format and lint code"
 	@echo "    dev                - Start application"
+	@echo "    test               - Run tests"
 	@echo ""
 	@echo "  🐳 Production:"
 	@echo "    prod-up            - Start all services"
@@ -51,3 +52,6 @@ db-down:
 
 db-remove:
 	docker-compose -f docker-compose.db.yml down -v
+
+test:
+	gotestsum --format=short-verbose
