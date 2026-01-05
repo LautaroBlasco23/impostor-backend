@@ -1,5 +1,4 @@
-.PHONY: help install-tools code-check dev prod-up prod-down prod-build db-up db-down db-remove test
-
+.PHONY: help install-tools code-check dev docker-up docker-down docker-build db-up db-down db-remove test
 .DEFAULT_GOAL := help
 
 help:
@@ -7,13 +6,13 @@ help:
 	@echo "  🛠️  Development:"
 	@echo "    install-tools      - Install Go tools (gofumpt, golangci-lint, air, gotestsum)"
 	@echo "    code-check         - Format and lint code"
-	@echo "    dev                - Start application"
+	@echo "    dev                - Start application with databases"
 	@echo "    test               - Run tests"
 	@echo ""
-	@echo "  🐳 Production:"
-	@echo "    prod-up            - Start all services"
-	@echo "    prod-down          - Stop services"
-	@echo "    prod-build         - Build API image"
+	@echo "  🐳 Docker:"
+	@echo "    docker-up          - Start all services"
+	@echo "    docker-down        - Stop services"
+	@echo "    docker-build       - Build API image"
 	@echo ""
 	@echo "  🗄️  Database:"
 	@echo "    db-up              - Start databases"
@@ -30,28 +29,28 @@ code-check:
 	gofumpt -l -w .
 	golangci-lint run --fix ./...
 
-dev:
+dev: db-up
 	ENV_FILE=.env air -c .air.toml
 
-prod-up:
+docker-up:
 	@[ -f .env ] || (echo ".env not found"; exit 1)
-	docker-compose --env-file .env up -d
+	docker compose --env-file .env up -d
 
-prod-down:
-	docker-compose down
+docker-down:
+	docker compose down
 
-prod-build:
+docker-build:
 	@[ -f .env ] || (echo ".env not found"; exit 1)
-	docker-compose build api
+	docker compose build api
 
 db-up:
-	docker-compose -f docker-compose.db.yml up -d
+	docker compose -f docker-compose.db.yml up -d
 
 db-down:
-	docker-compose -f docker-compose.db.yml stop
+	docker compose -f docker-compose.db.yml stop
 
 db-remove:
-	docker-compose -f docker-compose.db.yml down -v
+	docker compose -f docker-compose.db.yml down -v
 
 test:
 	gotestsum --format=short-verbose
