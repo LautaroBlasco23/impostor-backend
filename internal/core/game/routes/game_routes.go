@@ -11,4 +11,5 @@ func RegisterRoutes(router fiber.Router, ctrl *controller.GameController) {
 	router.Get("/room/:roomId", ctrl.GetGameByRoom)
 	router.Post("/vote", ctrl.Vote)
 	router.Post("/:id/end", ctrl.EndGame)
+	router.Post("/:id/leave", ctrl.LeaveGame)
 }
