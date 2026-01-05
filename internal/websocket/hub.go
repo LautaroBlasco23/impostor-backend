@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 
@@ -106,7 +107,11 @@ func NewClient(id, roomID string, conn *websocket.Conn, hub *Hub) *Client {
 func (c *Client) Close() {
 	c.closeOnce.Do(func() {
 		if c.Conn != nil {
-			c.Conn.Close()
+			err := c.Conn.Close()
+			if err != nil {
+				fmt.Printf("error closing clients connection!, %v", err)
+				fmt.Println()
+			}
 		}
 	})
 }
@@ -276,8 +281,7 @@ func (c *Client) handleMessage(message []byte) {
 		return
 	}
 
-	switch msg.Type {
-	case MessageTypeReconnect:
+	if msg.Type == MessageTypeReconnect {
 		var payload ReconnectPayload
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 			log.Printf("Error unmarshaling reconnect payload: %v", err)
