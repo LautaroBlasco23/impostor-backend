@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/LautaroBlasco23/impostor/internal/core/game/model"
@@ -18,12 +19,25 @@ import (
 	"github.com/google/uuid"
 )
 
+const ReconnectTimeout = 60 * time.Second
+
 type GameService interface {
 	StartGame(ctx context.Context, req *model.StartGameRequest) (*model.Game, error)
 	GetGame(ctx context.Context, id string) (*model.Game, error)
 	GetGameByRoom(ctx context.Context, roomID string) (*model.Game, error)
 	Vote(ctx context.Context, req *model.VoteRequest) (*model.VoteResult, error)
 	EndGame(ctx context.Context, gameID string) error
+	LeaveGame(ctx context.Context, gameID string, req *model.LeaveGameRequest) error
+	CancelGame(ctx context.Context, gameID string, reason string) error
+	HandleDisconnect(clientID, roomID string)
+	HandleReconnect(clientID, roomID, gameID string)
+}
+
+type disconnectTimer struct {
+	timer    *time.Timer
+	gameID   string
+	userID   string
+	nickname string
 }
 
 type gameService struct {
@@ -32,6 +46,9 @@ type gameService struct {
 	userRepo userRepo.UserRepository
 	wordRepo wordRepo.WordRepository
 	hub      *ws.Hub
+
+	disconnectTimers map[string]*disconnectTimer
+	timersMu         sync.Mutex
 }
 
 func NewGameService(
@@ -41,13 +58,19 @@ func NewGameService(
 	wordRepo wordRepo.WordRepository,
 	hub *ws.Hub,
 ) GameService {
-	return &gameService{
-		gameRepo: gameRepo,
-		roomRepo: roomRepo,
-		userRepo: userRepo,
-		wordRepo: wordRepo,
-		hub:      hub,
+	svc := &gameService{
+		gameRepo:         gameRepo,
+		roomRepo:         roomRepo,
+		userRepo:         userRepo,
+		wordRepo:         wordRepo,
+		hub:              hub,
+		disconnectTimers: make(map[string]*disconnectTimer),
 	}
+
+	hub.SetDisconnectHandler(svc.HandleDisconnect)
+	hub.SetReconnectHandler(svc.HandleReconnect)
+
+	return svc
 }
 
 func (s *gameService) StartGame(ctx context.Context, req *model.StartGameRequest) (*model.Game, error) {
@@ -96,8 +119,8 @@ func (s *gameService) validateAndGetStartGameData(ctx context.Context, roomID st
 		return nil, nil, err
 	}
 
-	if len(users) < 2 {
-		return nil, nil, fmt.Errorf("need at least 2 users to start game")
+	if len(users) < 3 {
+		return nil, nil, fmt.Errorf("need at least 3 users to start game")
 	}
 
 	for _, user := range users {
@@ -130,16 +153,17 @@ func (s *gameService) assignRoles(ctx context.Context, users []*userModel.User) 
 
 func (s *gameService) createGame(roomID, impostorID, word, category string) *model.Game {
 	return &model.Game{
-		ID:          uuid.New().String(),
-		RoomID:      roomID,
-		State:       model.GameStatePlaying,
-		ImpostorID:  impostorID,
-		CurrentWord: word,
-		Category:    category,
-		VoteCount:   make(map[string]int),
-		VotedUsers:  make(map[string]string),
-		RoundNumber: 1,
-		CreatedAt:   time.Now(),
+		ID:                uuid.New().String(),
+		RoomID:            roomID,
+		State:             model.GameStatePlaying,
+		ImpostorID:        impostorID,
+		CurrentWord:       word,
+		Category:          category,
+		VoteCount:         make(map[string]int),
+		VotedUsers:        make(map[string]string),
+		DisconnectedUsers: make(map[string]*model.DisconnectedUser),
+		RoundNumber:       1,
+		CreatedAt:         time.Now(),
 	}
 }
 
@@ -316,6 +340,7 @@ func (s *gameService) handleImpostorEliminated(game *model.Game, eliminatedUser 
 		"impostor_id":   eliminatedUser.ID,
 		"impostor_name": eliminatedUser.Nickname,
 		"message":       message,
+		"word":          game.CurrentWord,
 	})
 
 	return &model.VoteResult{
@@ -330,7 +355,7 @@ func (s *gameService) handlePlayerEliminated(ctx context.Context, game *model.Ga
 		return nil, err
 	}
 
-	if len(aliveAfterVote) <= 1 {
+	if len(aliveAfterVote) <= 2 {
 		return s.handleImpostorWins(game), nil
 	}
 
@@ -353,6 +378,7 @@ func (s *gameService) handleImpostorWins(game *model.Game) *model.VoteResult {
 		"impostor_id":   game.ImpostorID,
 		"impostor_name": impostorName,
 		"message":       message,
+		"word":          game.CurrentWord,
 	})
 
 	return &model.VoteResult{
@@ -387,6 +413,245 @@ func (s *gameService) EndGame(ctx context.Context, gameID string) error {
 
 	game.State = model.GameStateLost
 	return s.gameRepo.Update(ctx, game)
+}
+
+func (s *gameService) LeaveGame(ctx context.Context, gameID string, req *model.LeaveGameRequest) error {
+	game, err := s.gameRepo.GetByID(ctx, gameID)
+	if err != nil {
+		return fmt.Errorf("game not found: %w", err)
+	}
+
+	if game.State != model.GameStatePlaying && game.State != model.GameStateVoting && game.State != model.GameStatePaused {
+		return fmt.Errorf("game is not active")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, req.UserID)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+
+	if user.RoomID != game.RoomID {
+		return fmt.Errorf("user is not in this game")
+	}
+
+	reason := fmt.Sprintf("%s left the game", user.Nickname)
+	return s.CancelGame(ctx, gameID, reason)
+}
+
+func (s *gameService) CancelGame(ctx context.Context, gameID string, reason string) error {
+	game, err := s.gameRepo.GetByID(ctx, gameID)
+	if err != nil {
+		return fmt.Errorf("game not found: %w", err)
+	}
+
+	s.clearAllTimersForGame(gameID)
+
+	game.State = model.GameStateCancelled
+
+	s.hub.BroadcastToRoom(game.RoomID, ws.EventGameCancelled, map[string]interface{}{
+		"game_id":     gameID,
+		"reason":      reason,
+		"impostor_id": game.ImpostorID,
+		"word":        game.CurrentWord,
+	})
+
+	users, err := s.userRepo.GetByRoomID(ctx, game.RoomID)
+	if err != nil {
+		log.Printf("Failed to get users for cleanup: %v", err)
+	} else {
+		for _, user := range users {
+			if delErr := s.userRepo.Delete(ctx, user.ID); delErr != nil {
+				log.Printf("Failed to delete user %s: %v", user.ID, delErr)
+			}
+		}
+	}
+
+	if err := s.roomRepo.Delete(ctx, game.RoomID); err != nil {
+		log.Printf("Failed to delete room %s: %v", game.RoomID, err)
+	}
+
+	if err := s.gameRepo.Delete(ctx, gameID); err != nil {
+		log.Printf("Failed to delete game %s: %v", gameID, err)
+	}
+
+	log.Printf("Game %s cancelled: %s", gameID, reason)
+	return nil
+}
+
+func (s *gameService) HandleDisconnect(clientID, roomID string) {
+	ctx := context.Background()
+
+	game, err := s.gameRepo.GetByRoomID(ctx, roomID)
+	if err != nil {
+		s.hub.BroadcastToRoom(roomID, ws.EventUserLeft, map[string]string{
+			"user_id": clientID,
+		})
+		return
+	}
+
+	if game.State != model.GameStatePlaying && game.State != model.GameStateVoting && game.State != model.GameStatePaused {
+		s.hub.BroadcastToRoom(roomID, ws.EventUserLeft, map[string]string{
+			"user_id": clientID,
+		})
+		return
+	}
+
+	user, err := s.userRepo.GetByID(ctx, clientID)
+	if err != nil {
+		log.Printf("Failed to get user %s for disconnect handling: %v", clientID, err)
+		return
+	}
+
+	if !user.IsAlive {
+		return
+	}
+
+	s.startDisconnectTimer(game, user)
+}
+
+func (s *gameService) startDisconnectTimer(game *model.Game, user *userModel.User) {
+	s.timersMu.Lock()
+	defer s.timersMu.Unlock()
+
+	if existing, exists := s.disconnectTimers[user.ID]; exists {
+		existing.timer.Stop()
+		delete(s.disconnectTimers, user.ID)
+	}
+
+	if game.DisconnectedUsers == nil {
+		game.DisconnectedUsers = make(map[string]*model.DisconnectedUser)
+	}
+
+	disconnectedUser := &model.DisconnectedUser{
+		UserID:       user.ID,
+		Nickname:     user.Nickname,
+		DisconnectAt: time.Now(),
+	}
+	game.DisconnectedUsers[user.ID] = disconnectedUser
+
+	previousState := game.State
+	if game.State != model.GameStatePaused {
+		game.PreviousState = game.State
+		game.State = model.GameStatePaused
+	}
+
+	ctx := context.Background()
+	if err := s.gameRepo.Update(ctx, game); err != nil {
+		log.Printf("Failed to update game state for disconnect: %v", err)
+	}
+
+	s.hub.BroadcastToRoom(game.RoomID, ws.EventUserDisconnected, map[string]interface{}{
+		"user_id":         user.ID,
+		"nickname":        user.Nickname,
+		"timeout_seconds": int(ReconnectTimeout.Seconds()),
+		"disconnect_at":   disconnectedUser.DisconnectAt,
+		"previous_state":  previousState,
+	})
+
+	timer := time.AfterFunc(ReconnectTimeout, func() {
+		s.onDisconnectTimeout(game.ID, user.ID, user.Nickname)
+	})
+
+	s.disconnectTimers[user.ID] = &disconnectTimer{
+		timer:    timer,
+		gameID:   game.ID,
+		userID:   user.ID,
+		nickname: user.Nickname,
+	}
+
+	log.Printf("Started %v disconnect timer for user %s in game %s", ReconnectTimeout, user.ID, game.ID)
+}
+
+func (s *gameService) onDisconnectTimeout(gameID, userID, nickname string) {
+	s.timersMu.Lock()
+	delete(s.disconnectTimers, userID)
+	s.timersMu.Unlock()
+
+	ctx := context.Background()
+	reason := fmt.Sprintf("%s failed to reconnect in time", nickname)
+
+	if err := s.CancelGame(ctx, gameID, reason); err != nil {
+		log.Printf("Failed to cancel game on disconnect timeout: %v", err)
+	}
+}
+
+func (s *gameService) HandleReconnect(clientID, roomID, gameID string) {
+	s.timersMu.Lock()
+	dt, exists := s.disconnectTimers[clientID]
+	if exists {
+		dt.timer.Stop()
+		delete(s.disconnectTimers, clientID)
+	}
+	s.timersMu.Unlock()
+
+	if !exists {
+		log.Printf("No active disconnect timer for user %s", clientID)
+		return
+	}
+
+	ctx := context.Background()
+	game, err := s.gameRepo.GetByID(ctx, gameID)
+	if err != nil {
+		log.Printf("Failed to get game for reconnect: %v", err)
+		return
+	}
+
+	user, err := s.userRepo.GetByID(ctx, clientID)
+	if err != nil {
+		log.Printf("Failed to get user for reconnect: %v", err)
+		return
+	}
+
+	delete(game.DisconnectedUsers, clientID)
+
+	if len(game.DisconnectedUsers) == 0 && game.State == model.GameStatePaused {
+		game.State = game.PreviousState
+		game.PreviousState = ""
+	}
+
+	if err := s.gameRepo.Update(ctx, game); err != nil {
+		log.Printf("Failed to update game state for reconnect: %v", err)
+	}
+
+	s.hub.BroadcastToRoom(roomID, ws.EventUserReconnected, map[string]interface{}{
+		"user_id":    clientID,
+		"nickname":   user.Nickname,
+		"game_state": game.State,
+	})
+
+	s.sendGameStateToUser(game, user)
+
+	log.Printf("User %s reconnected to game %s", clientID, gameID)
+}
+
+func (s *gameService) sendGameStateToUser(game *model.Game, user *userModel.User) {
+	payload := map[string]interface{}{
+		"game_id":      game.ID,
+		"state":        game.State,
+		"category":     game.Category,
+		"round_number": game.RoundNumber,
+		"impostor_id":  game.ImpostorID,
+		"vote_count":   game.VoteCount,
+		"voted_users":  game.VotedUsers,
+	}
+
+	if user.ID != game.ImpostorID {
+		payload["current_word"] = game.CurrentWord
+	}
+
+	s.hub.SendToClient(user.ID, game.RoomID, ws.EventGameStarted, payload)
+}
+
+func (s *gameService) clearAllTimersForGame(gameID string) {
+	s.timersMu.Lock()
+	defer s.timersMu.Unlock()
+
+	for userID, dt := range s.disconnectTimers {
+		if dt.gameID == gameID {
+			dt.timer.Stop()
+			delete(s.disconnectTimers, userID)
+		}
+	}
 }
 
 func (s *gameService) getAliveUsers(ctx context.Context, roomID string) ([]*userModel.User, error) {
