@@ -11,17 +11,35 @@ import (
 type EventType string
 
 const (
-	EventUserJoined     EventType = "user_joined"
-	EventUserLeft       EventType = "user_left"
-	EventUserReady      EventType = "user_ready"
-	EventCategorySet    EventType = "category_set"
-	EventGameStarted    EventType = "game_started"
-	EventUserVoted      EventType = "user_voted"
-	EventUserEliminated EventType = "user_eliminated"
-	EventGameWon        EventType = "game_won"
-	EventGameLost       EventType = "game_lost"
-	EventRoomUpdate     EventType = "room_update"
+	EventUserJoined       EventType = "user_joined"
+	EventUserLeft         EventType = "user_left"
+	EventUserReady        EventType = "user_ready"
+	EventCategorySet      EventType = "category_set"
+	EventGameStarted      EventType = "game_started"
+	EventUserVoted        EventType = "user_voted"
+	EventUserEliminated   EventType = "user_eliminated"
+	EventGameWon          EventType = "game_won"
+	EventGameLost         EventType = "game_lost"
+	EventRoomUpdate       EventType = "room_update"
+	EventUserDisconnected EventType = "user_disconnected"
+	EventUserReconnected  EventType = "user_reconnected"
+	EventGameCancelled    EventType = "game_cancelled"
 )
+
+type MessageType string
+
+const (
+	MessageTypeReconnect MessageType = "reconnect"
+)
+
+type ClientMessage struct {
+	Type    MessageType     `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+type ReconnectPayload struct {
+	GameID string `json:"game_id"`
+}
 
 type Event struct {
 	Type    EventType   `json:"type"`
@@ -30,19 +48,27 @@ type Event struct {
 }
 
 type Client struct {
-	ID     string
-	RoomID string
-	Conn   *websocket.Conn
-	Send   chan []byte
+	ID        string
+	RoomID    string
+	Conn      *websocket.Conn
+	Send      chan []byte
+	hub       *Hub
+	closeOnce sync.Once
 }
 
+type DisconnectHandler func(clientID, roomID string)
+
+type ReconnectHandler func(clientID, roomID, gameID string)
+
 type Hub struct {
-	clients    map[string]*Client
-	rooms      map[string]map[string]*Client
-	broadcast  chan Event
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.RWMutex
+	clients           map[string]*Client
+	rooms             map[string]map[string]*Client
+	broadcast         chan Event
+	register          chan *Client
+	unregister        chan *Client
+	mu                sync.RWMutex
+	disconnectHandler DisconnectHandler
+	reconnectHandler  ReconnectHandler
 }
 
 func NewHub() *Hub {
@@ -53,6 +79,36 @@ func NewHub() *Hub {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 	}
+}
+
+func (h *Hub) SetDisconnectHandler(handler DisconnectHandler) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.disconnectHandler = handler
+}
+
+func (h *Hub) SetReconnectHandler(handler ReconnectHandler) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.reconnectHandler = handler
+}
+
+func NewClient(id, roomID string, conn *websocket.Conn, hub *Hub) *Client {
+	return &Client{
+		ID:     id,
+		RoomID: roomID,
+		Conn:   conn,
+		Send:   make(chan []byte, 256),
+		hub:    hub,
+	}
+}
+
+func (c *Client) Close() {
+	c.closeOnce.Do(func() {
+		if c.Conn != nil {
+			c.Conn.Close()
+		}
+	})
 }
 
 func (h *Hub) Run() {
@@ -82,6 +138,10 @@ func (h *Hub) registerClient(client *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	if existing, ok := h.clients[client.ID]; ok {
+		h.removeClientLocked(existing, false)
+	}
+
 	h.clients[client.ID] = client
 
 	if client.RoomID != "" {
@@ -94,38 +154,43 @@ func (h *Hub) registerClient(client *Client) {
 	log.Printf("Client %s registered to room %s", client.ID, client.RoomID)
 }
 
-func (h *Hub) unregisterClient(client *Client) {
-	h.mu.Lock()
+func (h *Hub) removeClientLocked(client *Client, triggerDisconnect bool) {
+	roomID := client.RoomID
+	clientID := client.ID
 
-	if _, ok := h.clients[client.ID]; ok {
-		roomID := client.RoomID
-		clientID := client.ID
+	delete(h.clients, client.ID)
 
-		delete(h.clients, client.ID)
+	select {
+	case <-client.Send:
+	default:
 		close(client.Send)
-
-		if client.RoomID != "" {
-			if room, exists := h.rooms[client.RoomID]; exists {
-				delete(room, client.ID)
-				if len(room) == 0 {
-					delete(h.rooms, client.RoomID)
-				}
-			}
-		}
-
-		log.Printf("Client %s unregistered from room %s", client.ID, client.RoomID)
-
-		h.mu.Unlock()
-
-		if roomID != "" {
-			h.BroadcastToRoom(roomID, EventUserLeft, map[string]string{
-				"user_id": clientID,
-			})
-		}
-		return
 	}
 
-	h.mu.Unlock()
+	if client.RoomID != "" {
+		if room, exists := h.rooms[client.RoomID]; exists {
+			delete(room, client.ID)
+			if len(room) == 0 {
+				delete(h.rooms, client.RoomID)
+			}
+		}
+	}
+
+	client.Close()
+
+	log.Printf("Client %s unregistered from room %s", clientID, roomID)
+
+	if triggerDisconnect && roomID != "" && h.disconnectHandler != nil {
+		go h.disconnectHandler(clientID, roomID)
+	}
+}
+
+func (h *Hub) unregisterClient(client *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if _, ok := h.clients[client.ID]; ok {
+		h.removeClientLocked(client, true)
+	}
 }
 
 func (h *Hub) broadcastToRoom(event Event) {
@@ -147,9 +212,7 @@ func (h *Hub) broadcastToRoom(event Event) {
 		select {
 		case client.Send <- message:
 		default:
-			close(client.Send)
-			delete(h.clients, client.ID)
-			delete(room, client.ID)
+			log.Printf("Client %s send buffer full, skipping message", client.ID)
 		}
 	}
 }
@@ -191,34 +254,52 @@ func (h *Hub) UpdateClientRoom(clientID, newRoomID string) {
 	}
 }
 
-func (c *Client) ReadPump(hub *Hub) {
+func (c *Client) ReadPump() {
 	defer func() {
-		hub.Unregister(c)
-		err := c.Conn.Close()
-		if err != nil {
-			log.Fatalf("error closing client connection: %v", err)
-		}
+		c.hub.Unregister(c)
 	}()
 
 	for {
-		_, _, err := c.Conn.ReadMessage()
+		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
 			break
 		}
+
+		c.handleMessage(message)
+	}
+}
+
+func (c *Client) handleMessage(message []byte) {
+	var msg ClientMessage
+	if err := json.Unmarshal(message, &msg); err != nil {
+		log.Printf("Error unmarshaling client message: %v", err)
+		return
+	}
+
+	switch msg.Type {
+	case MessageTypeReconnect:
+		var payload ReconnectPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			log.Printf("Error unmarshaling reconnect payload: %v", err)
+			return
+		}
+		c.hub.handleReconnect(c.ID, c.RoomID, payload.GameID)
+	}
+}
+
+func (h *Hub) handleReconnect(clientID, roomID, gameID string) {
+	h.mu.RLock()
+	handler := h.reconnectHandler
+	h.mu.RUnlock()
+
+	if handler != nil {
+		go handler(clientID, roomID, gameID)
 	}
 }
 
 func (c *Client) WritePump() {
-	defer func() {
-		err := c.Conn.Close()
-		if err != nil {
-			log.Fatalf("error closing client connection, %v ", err)
-		}
-	}()
-
 	for message := range c.Send {
-		err := c.Conn.WriteMessage(websocket.TextMessage, message)
-		if err != nil {
+		if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 			break
 		}
 	}
@@ -252,9 +333,7 @@ func (h *Hub) BroadcastToRoomExcept(roomID string, excludeClientID string, event
 		select {
 		case client.Send <- message:
 		default:
-			close(client.Send)
-			delete(h.clients, client.ID)
-			delete(room, client.ID)
+			log.Printf("Client %s send buffer full, skipping message", client.ID)
 		}
 	}
 }
@@ -283,7 +362,29 @@ func (h *Hub) SendToClient(clientID, roomID string, eventType EventType, payload
 	select {
 	case client.Send <- message:
 	default:
-		close(client.Send)
-		delete(h.clients, client.ID)
+		log.Printf("Client %s send buffer full, skipping message", client.ID)
 	}
+}
+
+func (h *Hub) IsClientConnected(clientID string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	_, exists := h.clients[clientID]
+	return exists
+}
+
+func (h *Hub) GetRoomClientIDs(roomID string) []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	room, exists := h.rooms[roomID]
+	if !exists {
+		return nil
+	}
+
+	ids := make([]string, 0, len(room))
+	for id := range room {
+		ids = append(ids, id)
+	}
+	return ids
 }
