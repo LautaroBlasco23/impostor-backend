@@ -35,6 +35,7 @@ import (
 	wordRoutes "github.com/LautaroBlasco23/impostor/internal/core/word/routes"
 	wordService "github.com/LautaroBlasco23/impostor/internal/core/word/service"
 	"github.com/LautaroBlasco23/impostor/internal/database"
+	"github.com/LautaroBlasco23/impostor/internal/middleware"
 	ws "github.com/LautaroBlasco23/impostor/internal/websocket"
 	wsController "github.com/LautaroBlasco23/impostor/internal/websocket/controller"
 )
@@ -118,9 +119,10 @@ func buildApp(
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: cfg.AllowedOrigins,
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization, Accept-Language",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
+	app.Use(middleware.Language())
 
 	api := app.Group("/api/v1")
 	wordRoutes.RegisterRoutes(api.Group("/words"), wordCtrl)
