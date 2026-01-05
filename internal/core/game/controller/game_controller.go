@@ -24,7 +24,7 @@ func (c *GameController) StartGame(ctx *fiber.Ctx) error {
 
 	game, err := c.service.StartGame(ctx.Context(), &req)
 	if err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
@@ -38,7 +38,7 @@ func (c *GameController) GetGame(ctx *fiber.Ctx) error {
 	game, err := c.service.GetGame(ctx.Context(), id)
 	if err != nil {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": "Game not found",
 		})
 	}
 
@@ -51,7 +51,7 @@ func (c *GameController) GetGameByRoom(ctx *fiber.Ctx) error {
 	game, err := c.service.GetGameByRoom(ctx.Context(), roomID)
 	if err != nil {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": "No active game in room",
 		})
 	}
 
@@ -80,12 +80,33 @@ func (c *GameController) EndGame(ctx *fiber.Ctx) error {
 	id := ctx.Params("id")
 
 	if err := c.service.EndGame(ctx.Context(), id); err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
 	return ctx.JSON(fiber.Map{
-		"message": "Game ended successfully",
+		"message": "Game ended",
+	})
+}
+
+func (c *GameController) LeaveGame(ctx *fiber.Ctx) error {
+	gameID := ctx.Params("id")
+
+	var req model.LeaveGameRequest
+	if err := ctx.BodyParser(&req); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	if err := c.service.LeaveGame(ctx.Context(), gameID, &req); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return ctx.JSON(fiber.Map{
+		"message": "Left game successfully",
 	})
 }
