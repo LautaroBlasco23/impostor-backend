@@ -22,39 +22,36 @@ func (c *GameController) StartGame(ctx *fiber.Ctx) error {
 		})
 	}
 
-	game, err := c.service.StartGame(ctx.Context(), &req)
+	game, err := c.service.StartGame(ctx.UserContext(), &req)
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-
 	return ctx.Status(fiber.StatusCreated).JSON(game)
 }
 
 func (c *GameController) GetGame(ctx *fiber.Ctx) error {
 	id := ctx.Params("id")
 
-	game, err := c.service.GetGame(ctx.Context(), id)
+	game, err := c.service.GetGame(ctx.UserContext(), id)
 	if err != nil {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Game not found",
 		})
 	}
-
 	return ctx.JSON(game)
 }
 
 func (c *GameController) GetGameByRoom(ctx *fiber.Ctx) error {
 	roomID := ctx.Params("roomId")
 
-	game, err := c.service.GetGameByRoom(ctx.Context(), roomID)
+	game, err := c.service.GetGameByRoom(ctx.UserContext(), roomID)
 	if err != nil {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "No active game in room",
 		})
 	}
-
 	return ctx.JSON(game)
 }
 
@@ -66,25 +63,23 @@ func (c *GameController) Vote(ctx *fiber.Ctx) error {
 		})
 	}
 
-	result, err := c.service.Vote(ctx.Context(), &req)
+	result, err := c.service.Vote(ctx.UserContext(), &req)
 	if err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-
 	return ctx.JSON(result)
 }
 
 func (c *GameController) EndGame(ctx *fiber.Ctx) error {
 	id := ctx.Params("id")
 
-	if err := c.service.EndGame(ctx.Context(), id); err != nil {
+	if err := c.service.EndGame(ctx.UserContext(), id); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-
 	return ctx.JSON(fiber.Map{
 		"message": "Game ended",
 	})
@@ -92,7 +87,6 @@ func (c *GameController) EndGame(ctx *fiber.Ctx) error {
 
 func (c *GameController) LeaveGame(ctx *fiber.Ctx) error {
 	gameID := ctx.Params("id")
-
 	var req model.LeaveGameRequest
 	if err := ctx.BodyParser(&req); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -100,12 +94,11 @@ func (c *GameController) LeaveGame(ctx *fiber.Ctx) error {
 		})
 	}
 
-	if err := c.service.LeaveGame(ctx.Context(), gameID, &req); err != nil {
+	if err := c.service.LeaveGame(ctx.UserContext(), gameID, &req); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-
 	return ctx.JSON(fiber.Map{
 		"message": "Left game successfully",
 	})

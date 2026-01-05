@@ -15,6 +15,7 @@ import (
 	userModel "github.com/LautaroBlasco23/impostor/internal/core/user/model"
 	userRepo "github.com/LautaroBlasco23/impostor/internal/core/user/repository"
 	wordRepo "github.com/LautaroBlasco23/impostor/internal/core/word/repository"
+	"github.com/LautaroBlasco23/impostor/internal/middleware"
 	ws "github.com/LautaroBlasco23/impostor/internal/websocket"
 	"github.com/google/uuid"
 )
@@ -79,7 +80,7 @@ func (s *gameService) StartGame(ctx context.Context, req *model.StartGameRequest
 		return nil, err
 	}
 
-	words, err := s.wordRepo.GetRandomByCategory(ctx, room.Category, 1)
+	words, err := s.wordRepo.GetRandomByCategory(ctx, room.Category, middleware.GetLanguage(ctx), 1)
 	if err != nil || len(words) == 0 {
 		return nil, fmt.Errorf("no words found for category: %s", room.Category)
 	}
