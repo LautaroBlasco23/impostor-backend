@@ -26,12 +26,7 @@ func (c *WebSocketController) HandleConnection(conn *websocket.Conn) {
 	roomID := conn.Query("roomId")
 	nickname := conn.Query("nickname")
 
-	client := &ws.Client{
-		ID:     userID,
-		RoomID: roomID,
-		Conn:   conn,
-		Send:   make(chan []byte, 256),
-	}
+	client := ws.NewClient(userID, roomID, conn, c.hub)
 
 	c.hub.Register(client)
 
@@ -43,7 +38,7 @@ func (c *WebSocketController) HandleConnection(conn *websocket.Conn) {
 	}
 
 	go client.WritePump()
-	client.ReadPump(c.hub)
+	client.ReadPump()
 }
 
 func (c *WebSocketController) GetHub() *ws.Hub {
