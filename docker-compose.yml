@@ -4,8 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: impostor-api
-    ports:
-      - "8080:8080"
     env_file:
       - .env
     depends_on:
@@ -17,6 +15,19 @@ services:
       - impostor-network
     restart: unless-stopped
 
+  nginx:
+    image: nginx:alpine
+    container_name: impostor-nginx
+    restart: unless-stopped
+    ports:
+      - "81:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - impostor-network
+
   postgres:
     image: postgres:16-alpine
     container_name: impostor-postgres
@@ -24,8 +35,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: gamedb
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d
@@ -40,8 +49,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: impostor-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
