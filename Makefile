@@ -1,4 +1,4 @@
-.PHONY: help install-tools code-check dev docker-up docker-down docker-build db-up db-down db-remove test
+.PHONY: help install-tools code-check dev docker-up docker-down docker-build db-up db-down db-remove db-wait test
 .DEFAULT_GOAL := help
 
 help:
@@ -18,6 +18,7 @@ help:
 	@echo "    db-up              - Start databases"
 	@echo "    db-down            - Stop databases"
 	@echo "    db-remove          - Remove databases and volumes"
+	@echo "    db-wait            - Wait for databases to be ready"
 
 install-tools:
 	go install mvdan.cc/gofumpt@latest
@@ -29,7 +30,14 @@ code-check:
 	gofumpt -l -w .
 	golangci-lint run --fix ./...
 
-dev: db-up
+db-wait:
+	@echo "Waiting for databases to be ready..."
+	@until docker compose -f docker-compose.db.yml exec -T postgres pg_isready -U $${POSTGRES_USER:-postgres} > /dev/null 2>&1; do \
+		sleep 1; \
+	done
+	@echo "PostgreSQL is ready"
+
+dev: db-up db-wait
 	ENV_FILE=.env air -c .air.toml
 
 docker-up:
