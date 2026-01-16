@@ -118,7 +118,7 @@ func buildApp(
 	app.Use(recover.New())
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "https://impostor.lautaroblasco.com,http://localhost:3000",
+		AllowOrigins:     "https://impostor.lautaroblasco.com, http://localhost:5173",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, Accept-Language",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
 		AllowCredentials: true,
