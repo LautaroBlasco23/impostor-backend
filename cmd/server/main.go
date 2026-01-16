@@ -124,6 +124,8 @@ func buildApp(
 	}))
 	app.Use(middleware.Language())
 
+	app.Get("/health", healthHandler(pgPool, redisClient))
+
 	api := app.Group("/api/v1")
 	wordRoutes.RegisterRoutes(api.Group("/words"), wordCtrl)
 	roomRoutes.RegisterRoutes(api.Group("/rooms"), roomCtrl)
@@ -134,6 +136,31 @@ func buildApp(
 	app.Get("/ws/:userId", websocket.New(wsCtrl.HandleConnection))
 
 	return app
+}
+
+func healthHandler(pgPool *pgxpool.Pool, redisClient *redis.Client) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
+		defer cancel()
+
+		status := fiber.Map{
+			"status": "healthy",
+		}
+
+		if err := pgPool.Ping(ctx); err != nil {
+			status["status"] = "unhealthy"
+			status["postgres"] = "unreachable"
+			return c.Status(fiber.StatusServiceUnavailable).JSON(status)
+		}
+
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			status["status"] = "unhealthy"
+			status["redis"] = "unreachable"
+			return c.Status(fiber.StatusServiceUnavailable).JSON(status)
+		}
+
+		return c.JSON(status)
+	}
 }
 
 func waitForShutdown(app *fiber.App) error {
