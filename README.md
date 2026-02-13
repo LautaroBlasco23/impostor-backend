@@ -1,6 +1,6 @@
 # Game Server
 
-A multiplayer word-guessing game server built with Go, Fiber, Redis, and PostgreSQL.
+A multiplayer word-guessing game server built with `Go`, `Fiber`, `Redis`, and `PostgreSQL`.
 
 This project includes a `Makefile` that provides convenient `make` commands to simplify common development tasks.
 
