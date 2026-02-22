@@ -17,6 +17,7 @@ type RoomRepository interface {
 	GetAll(ctx context.Context) ([]*model.Room, error)
 	Update(ctx context.Context, room *model.Room) error
 	Delete(ctx context.Context, id string) error
+	NextID(ctx context.Context) (string, error)
 }
 
 type roomRepository struct {
@@ -91,4 +92,12 @@ func (r *roomRepository) Update(ctx context.Context, room *model.Room) error {
 func (r *roomRepository) Delete(ctx context.Context, id string) error {
 	key := fmt.Sprintf("room:%s", id)
 	return r.client.Del(ctx, key).Err()
+}
+
+func (r *roomRepository) NextID(ctx context.Context) (string, error) {
+	id, err := r.client.Incr(ctx, "room:id_counter").Result()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate room id: %w", err)
+	}
+	return fmt.Sprintf("%d", id), nil
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/LautaroBlasco23/impostor/internal/core/room/model"
 	"github.com/LautaroBlasco23/impostor/internal/core/room/repository"
 	ws "github.com/LautaroBlasco23/impostor/internal/websocket"
-	"github.com/google/uuid"
 )
 
 type RoomService interface {
@@ -32,19 +31,21 @@ func NewRoomService(repo repository.RoomRepository, hub *ws.Hub) RoomService {
 }
 
 func (s *roomService) CreateRoom(ctx context.Context, req *model.CreateRoomRequest) (*model.Room, error) {
+	id, err := s.repo.NextID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	room := &model.Room{
-		ID:        uuid.New().String(),
+		ID:        id,
 		Name:      req.Name,
 		LeaderID:  req.LeaderID,
 		MaxUsers:  req.MaxUsers,
 		CreatedAt: time.Now(),
 		IsActive:  true,
 	}
-
 	if err := s.repo.Create(ctx, room); err != nil {
 		return nil, err
 	}
-
 	return room, nil
 }
 
