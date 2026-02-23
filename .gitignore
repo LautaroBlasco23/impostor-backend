@@ -52,10 +52,6 @@ tmp/
 temp/
 *.tmp
 
-# Air live reload (if using)
-tmp/
-.air.toml
-
 # Certificates and keys
 *.pem
 *.key
