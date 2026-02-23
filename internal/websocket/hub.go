@@ -163,13 +163,11 @@ func (h *Hub) removeClientLocked(client *Client, triggerDisconnect bool) {
 	roomID := client.RoomID
 	clientID := client.ID
 
-	delete(h.clients, client.ID)
-
-	select {
-	case <-client.Send:
-	default:
-		close(client.Send)
+	if _, exists := h.clients[clientID]; !exists {
+		return
 	}
+
+	delete(h.clients, client.ID)
 
 	if client.RoomID != "" {
 		if room, exists := h.rooms[client.RoomID]; exists {
@@ -180,7 +178,7 @@ func (h *Hub) removeClientLocked(client *Client, triggerDisconnect bool) {
 		}
 	}
 
-	client.Close()
+	go client.Close()
 
 	log.Printf("Client %s unregistered from room %s", clientID, roomID)
 

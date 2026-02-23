@@ -30,6 +30,7 @@ type GameService interface {
 	EndGame(ctx context.Context, gameID string) error
 	LeaveGame(ctx context.Context, gameID string, req *model.LeaveGameRequest) error
 	CancelGame(ctx context.Context, gameID string, reason string) error
+	ReturnToRoom(ctx context.Context, gameID string, req *model.ReturnToRoomRequest) error
 	HandleDisconnect(clientID, roomID string)
 	HandleReconnect(clientID, roomID, gameID string)
 }
@@ -698,4 +699,40 @@ func (s *gameService) getMostVotedUser(voteCount map[string]int) string {
 	}
 
 	return eliminatedID
+}
+
+func (s *gameService) ReturnToRoom(ctx context.Context, gameID string, req *model.ReturnToRoomRequest) error {
+	game, err := s.gameRepo.GetByID(ctx, gameID)
+	if err != nil {
+		return fmt.Errorf("game not found: %w", err)
+	}
+
+	if game.State != model.GameStateWon && game.State != model.GameStateLost {
+		return fmt.Errorf("game has not finished yet")
+	}
+
+	users, err := s.userRepo.GetByRoomID(ctx, game.RoomID)
+	if err != nil {
+		return fmt.Errorf("failed to get users: %w", err)
+	}
+
+	for _, user := range users {
+		user.Role = userModel.RolePlayer
+		user.IsAlive = false
+		user.IsReady = false
+		if err := s.userRepo.Update(ctx, user); err != nil {
+			log.Printf("Failed to reset user %s: %v", user.ID, err)
+		}
+	}
+
+	if err := s.gameRepo.Delete(ctx, gameID); err != nil {
+		return fmt.Errorf("failed to clean up game: %w", err)
+	}
+
+	s.hub.BroadcastToRoom(game.RoomID, ws.EventRoomUpdate, map[string]interface{}{
+		"room_id": game.RoomID,
+		"message": "Game finished, back in lobby",
+	})
+
+	return nil
 }

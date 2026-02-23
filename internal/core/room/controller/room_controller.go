@@ -94,11 +94,18 @@ func (c *RoomController) SetCategory(ctx *fiber.Ctx) error {
 
 func (c *RoomController) DeleteRoom(ctx *fiber.Ctx) error {
 	id := ctx.Params("id")
-	if err := c.service.DeleteRoom(ctx.Context(), id); err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+	var req struct {
+		LeaderID string `json:"leader_id" validate:"required"`
+	}
+	if err := ctx.BodyParser(&req); err != nil || req.LeaderID == "" {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "leader_id is required",
+		})
+	}
+	if err := c.service.DeleteRoom(ctx.Context(), id, req.LeaderID); err != nil {
+		return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-
 	return ctx.SendStatus(fiber.StatusNoContent)
 }

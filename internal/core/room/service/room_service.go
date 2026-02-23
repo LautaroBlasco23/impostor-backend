@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/LautaroBlasco23/impostor/internal/core/room/model"
 	"github.com/LautaroBlasco23/impostor/internal/core/room/repository"
+	userRepo "github.com/LautaroBlasco23/impostor/internal/core/user/repository"
 	ws "github.com/LautaroBlasco23/impostor/internal/websocket"
 )
 
@@ -15,18 +17,20 @@ type RoomService interface {
 	GetRoom(ctx context.Context, id string) (*model.Room, error)
 	GetAllRooms(ctx context.Context) ([]*model.Room, error)
 	SetCategory(ctx context.Context, roomID, leaderID, category string) error
-	DeleteRoom(ctx context.Context, id string) error
+	DeleteRoom(ctx context.Context, id, leaderID string) error
 }
 
 type roomService struct {
-	repo repository.RoomRepository
-	hub  *ws.Hub
+	repo     repository.RoomRepository
+	userRepo userRepo.UserRepository
+	hub      *ws.Hub
 }
 
-func NewRoomService(repo repository.RoomRepository, hub *ws.Hub) RoomService {
+func NewRoomService(repo repository.RoomRepository, userRepo userRepo.UserRepository, hub *ws.Hub) RoomService {
 	return &roomService{
 		repo: repo,
-		hub:  hub,
+		userRepo: userRepo,
+		hub: hub,
 	}
 }
 
@@ -80,6 +84,32 @@ func (s *roomService) SetCategory(ctx context.Context, roomID, leaderID, categor
 	return nil
 }
 
-func (s *roomService) DeleteRoom(ctx context.Context, id string) error {
+func (s *roomService) DeleteRoom(ctx context.Context, id, leaderID string) error {
+	room, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("room not found: %w", err)
+	}
+
+	if room.LeaderID != leaderID {
+		return fmt.Errorf("only the room owner can delete this room")
+	}
+
+	users, err := s.userRepo.GetByRoomID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to get room users: %w", err)
+	}
+
+	for _, user := range users {
+		if err := s.userRepo.Delete(ctx, user.ID); err != nil {
+			log.Printf("Failed to delete user %s: %v", user.ID, err)
+		}
+	}
+
+	s.hub.BroadcastToRoom(id, ws.EventGameCancelled, map[string]interface{}{
+		"room_id": id,
+		"reason":  "Room closed by owner",
+	})
+
 	return s.repo.Delete(ctx, id)
 }
+

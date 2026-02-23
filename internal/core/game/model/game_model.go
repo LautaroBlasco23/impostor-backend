@@ -55,3 +55,7 @@ type VoteResult struct {
 	GameState        GameState `json:"game_state"`
 	Message          string    `json:"message"`
 }
+
+type ReturnToRoomRequest struct {
+	UserID string `json:"user_id" validate:"required"`
+}

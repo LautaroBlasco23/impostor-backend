@@ -90,13 +90,13 @@ func buildApp(
 	wordSvc := wordService.NewWordService(wordRepository)
 	wordCtrl := wordController.NewWordController(wordSvc)
 
-	roomRepository := roomRepo.NewRoomRepository(redisClient)
-	roomSvc := roomService.NewRoomService(roomRepository, hub)
-	roomCtrl := roomController.NewRoomController(roomSvc)
-
 	userRepository := userRepo.NewUserRepository(redisClient)
 	userSvc := userService.NewUserService(userRepository, hub)
 	userCtrl := userController.NewUserController(userSvc)
+
+	roomRepository := roomRepo.NewRoomRepository(redisClient)
+	roomSvc := roomService.NewRoomService(roomRepository, userRepository, hub)
+	roomCtrl := roomController.NewRoomController(roomSvc)
 
 	gameRepository := gameRepo.NewGameRepository(redisClient)
 	gameSvc := gameService.NewGameService(

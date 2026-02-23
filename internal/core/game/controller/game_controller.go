@@ -103,3 +103,21 @@ func (c *GameController) LeaveGame(ctx *fiber.Ctx) error {
 		"message": "Left game successfully",
 	})
 }
+
+func (c *GameController) ReturnToRoom(ctx *fiber.Ctx) error {
+	gameID := ctx.Params("id")
+	var req model.ReturnToRoomRequest
+	if err := ctx.BodyParser(&req); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+	if err := c.service.ReturnToRoom(ctx.UserContext(), gameID, &req); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+	return ctx.JSON(fiber.Map{
+		"message": "Returned to room successfully",
+	})
+}
