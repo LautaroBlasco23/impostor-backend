@@ -1,4 +1,4 @@
-.PHONY: help install-tools code-check dev docker-up docker-down docker-build db-up db-down db-remove db-wait test start stop
+.PHONY: help install-tools code-check dev docker-up docker-down docker-build db-up db-down db-remove db-wait test start stop local-up local-down
 .DEFAULT_GOAL := help
 
 help:
@@ -17,6 +17,8 @@ help:
 	@echo "    docker-up          - Start all services"
 	@echo "    docker-down        - Stop services"
 	@echo "    docker-build       - Build API image"
+	@echo "    local-up           - Start full stack without nginx (localhost ports)"
+	@echo "    local-down         - Stop local full stack"
 	@echo ""
 	@echo "  🗄️  Database:"
 	@echo "    db-up              - Start databases"
@@ -54,6 +56,13 @@ docker-down:
 docker-build:
 	@[ -f .env ] || (echo ".env not found"; exit 1)
 	docker compose build api
+
+local-up:
+	@[ -f .env ] || (echo ".env not found"; exit 1)
+	docker compose -f docker-compose.local.yml --env-file .env up -d
+
+local-down:
+	docker compose -f docker-compose.local.yml down
 
 db-up:
 	docker compose -f docker-compose.db.yml up -d

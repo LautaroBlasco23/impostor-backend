@@ -6,6 +6,8 @@ services:
     container_name: impostor-api
     env_file:
       - .env
+    ports:
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -14,36 +16,6 @@ services:
     networks:
       - impostor-network
     restart: unless-stopped
-
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
-    container_name: impostor-frontend
-    restart: unless-stopped
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      HOSTNAME: "0.0.0.0"
-    networks:
-      - impostor-network
-
-  nginx:
-    image: nginx:alpine
-    container_name: impostor-nginx
-    restart: unless-stopped
-    ports:
-      - "81:80"
-    environment:
-      - FRONTEND_DOMAIN=${FRONTEND_DOMAIN}
-      - API_DOMAIN=${API_DOMAIN}
-    volumes:
-      - ./nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
-    depends_on:
-      - api
-      - frontend
-    networks:
-      - impostor-network
 
   postgres:
     image: postgres:16-alpine

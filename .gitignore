@@ -60,3 +60,6 @@ temp/
 
 # OS generated files
 Thumbs.db
+
+# Rendered nginx config (generated from nginx.conf.template)
+nginx.conf

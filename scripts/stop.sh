@@ -17,6 +17,11 @@ dev_running() {
     pgrep -f 'air.*\.air\.toml' >/dev/null 2>&1
 }
 
+# Check if local docker (no nginx) is running
+local_running() {
+    docker compose -f docker-compose.local.yml ps --services --filter "status=running" 2>/dev/null | grep -q . 2>/dev/null
+}
+
 # Print banner
 print_banner() {
     echo ""
@@ -33,6 +38,10 @@ get_docker_badge() {
 
 get_dev_badge() {
     dev_running && echo "  ${GREEN}(running)${RESET}" || echo ""
+}
+
+get_local_badge() {
+    local_running && echo "  ${GREEN}(running)${RESET}" || echo ""
 }
 
 # Handle data deletion for Docker
@@ -112,10 +121,11 @@ echo "  ${BOLD}Select an environment to stop:${RESET}"
 echo ""
 echo "    1)  Docker        — full stack (API + databases in containers)$(get_docker_badge)"
 echo "    2)  Local Dev     — databases in Docker + native Go app$(get_dev_badge)"
+echo "    3)  Local Docker  — full stack without nginx (localhost ports)$(get_local_badge)"
 echo "    0)  Cancel"
 echo ""
 
-read -p "  Enter choice [0-2]: " choice
+read -p "  Enter choice [0-3]: " choice
 
 case $choice in
     1)
@@ -143,6 +153,18 @@ case $choice in
         fi
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         handle_dev_delete
+        ;;
+    3)
+        echo ""
+        echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
+        if local_running; then
+            echo "  Stopping Local Docker environment..."
+            make local-down
+        else
+            echo "  Local Docker is not running — skipping stop."
+        fi
+        echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
+        handle_docker_delete
         ;;
     0)
         echo "  Cancelled"

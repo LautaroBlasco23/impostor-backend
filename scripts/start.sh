@@ -16,6 +16,11 @@ dev_running() {
     pgrep -f 'air.*\.air\.toml' >/dev/null 2>&1
 }
 
+# Check if local docker (no nginx) is running
+local_running() {
+    docker compose -f docker-compose.local.yml ps --services --filter "status=running" 2>/dev/null | grep -q . 2>/dev/null
+}
+
 # Print banner
 print_banner() {
     echo ""
@@ -32,6 +37,10 @@ get_docker_badge() {
 
 get_dev_badge() {
     dev_running && echo "  ${GREEN}(running)${RESET}" || echo ""
+}
+
+get_local_badge() {
+    local_running && echo "  ${GREEN}(running)${RESET}" || echo ""
 }
 
 # Check prerequisites
@@ -65,6 +74,20 @@ check_prerequisites() {
                 return 1
             fi
             ;;
+        3) # Local Docker (no nginx)
+            if ! command -v docker &> /dev/null; then
+                echo "${RED}❌ Docker is not installed${RESET}"
+                return 1
+            fi
+            if ! docker info >/dev/null 2>&1; then
+                echo "${RED}❌ Docker daemon is not running${RESET}"
+                return 1
+            fi
+            if [ ! -f .env ]; then
+                echo "${RED}❌ .env file not found. Copy from .env.example and configure.${RESET}"
+                return 1
+            fi
+            ;;
     esac
     return 0
 }
@@ -76,10 +99,11 @@ echo "  ${BOLD}Select an environment to start:${RESET}"
 echo ""
 echo "    1)  Docker        — full stack (API + databases in containers)$(get_docker_badge)"
 echo "    2)  Local Dev     — databases in Docker + native Go app$(get_dev_badge)"
+echo "    3)  Local Docker  — full stack without nginx (localhost ports)$(get_local_badge)"
 echo "    0)  Cancel"
 echo ""
 
-read -p "  Enter choice [0-2]: " choice
+read -p "  Enter choice [0-3]: " choice
 
 case $choice in
     1)
@@ -109,6 +133,21 @@ case $choice in
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         echo "  ${GREEN}✅  Local Dev started${RESET}"
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
+        echo "  Stop: make stop"
+        ;;
+    3)
+        if ! check_prerequisites 3; then
+            exit 1
+        fi
+        echo ""
+        echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
+        echo "  Starting Local Docker environment (no nginx)..."
+        echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
+        make local-up
+        echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
+        echo "  ${GREEN}✅  Local Docker environment started${RESET}"
+        echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
+        echo "  API:  http://localhost:8080"
         echo "  Stop: make stop"
         ;;
     0)

@@ -13,7 +13,7 @@ http {
 
     server {
         listen 80;
-        server_name impostor.lautaroblasco.com;
+        server_name ${FRONTEND_DOMAIN};
 
         location / {
             proxy_pass http://frontend;
@@ -29,7 +29,7 @@ http {
 
     server {
         listen 80;
-        server_name api-impostor.lautaroblasco.com;
+        server_name ${API_DOMAIN};
 
         location / {
             proxy_pass http://api;
