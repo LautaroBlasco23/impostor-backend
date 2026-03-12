@@ -1,7 +1,11 @@
-.PHONY: help install-tools code-check dev docker-up docker-down docker-build db-up db-down db-remove db-wait test
+.PHONY: help install-tools code-check dev docker-up docker-down docker-build db-up db-down db-remove db-wait test start stop
 .DEFAULT_GOAL := help
 
 help:
+	@echo ""
+	@echo "  🚀 Quick Start:"
+	@echo "    start              - Start environment (choose local or docker)"
+	@echo "    stop               - Stop environment (choose local or docker)"
 	@echo ""
 	@echo "  🛠️  Development:"
 	@echo "    install-tools      - Install Go tools (gofumpt, golangci-lint, air, gotestsum)"
@@ -62,3 +66,9 @@ db-remove:
 
 test:
 	gotestsum --format=short-verbose
+
+start:
+	@bash scripts/start.sh
+
+stop:
+	@bash scripts/stop.sh
