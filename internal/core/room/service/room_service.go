@@ -18,6 +18,7 @@ type RoomService interface {
 	GetAllRooms(ctx context.Context) ([]*model.Room, error)
 	SetCategory(ctx context.Context, roomID, leaderID, category string) error
 	DeleteRoom(ctx context.Context, id, leaderID string) error
+	KickUser(ctx context.Context, roomID, leaderID, targetUserID string) error
 }
 
 type roomService struct {
@@ -111,5 +112,37 @@ func (s *roomService) DeleteRoom(ctx context.Context, id, leaderID string) error
 	})
 
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *roomService) KickUser(ctx context.Context, roomID, leaderID, targetUserID string) error {
+	room, err := s.repo.GetByID(ctx, roomID)
+	if err != nil {
+		return fmt.Errorf("room not found: %w", err)
+	}
+	if room.LeaderID != leaderID {
+		return fmt.Errorf("only the room leader can kick players")
+	}
+	if leaderID == targetUserID {
+		return fmt.Errorf("cannot kick yourself")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, targetUserID)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+	if user.RoomID != roomID {
+		return fmt.Errorf("user is not in this room")
+	}
+
+	if err := s.userRepo.Delete(ctx, targetUserID); err != nil {
+		return fmt.Errorf("failed to remove user: %w", err)
+	}
+
+	s.hub.BroadcastToRoom(roomID, ws.EventUserKicked, map[string]interface{}{
+		"user_id":  targetUserID,
+		"nickname": user.Nickname,
+		"reason":   "kicked",
+	})
+	return nil
 }
 

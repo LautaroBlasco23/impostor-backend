@@ -11,4 +11,5 @@ func RegisterRoutes(router fiber.Router, ctrl *controller.RoomController) {
 	router.Get("/:id", ctrl.GetRoom)
 	router.Put("/:id/category", ctrl.SetCategory)
 	router.Delete("/:id", ctrl.DeleteRoom)
+	router.Delete("/:id/users/:userId", ctrl.KickUser)
 }

@@ -25,6 +25,7 @@ const (
 	EventUserDisconnected EventType = "user_disconnected"
 	EventUserReconnected  EventType = "user_reconnected"
 	EventGameCancelled    EventType = "game_cancelled"
+	EventUserKicked       EventType = "user_kicked"
 )
 
 type MessageType string
@@ -61,15 +62,18 @@ type DisconnectHandler func(clientID, roomID string)
 
 type ReconnectHandler func(clientID, roomID, gameID string)
 
+type LobbyReconnectHandler func(clientID string)
+
 type Hub struct {
-	clients           map[string]*Client
-	rooms             map[string]map[string]*Client
-	broadcast         chan Event
-	register          chan *Client
-	unregister        chan *Client
-	mu                sync.RWMutex
-	disconnectHandler DisconnectHandler
-	reconnectHandler  ReconnectHandler
+	clients                map[string]*Client
+	rooms                  map[string]map[string]*Client
+	broadcast              chan Event
+	register               chan *Client
+	unregister             chan *Client
+	mu                     sync.RWMutex
+	disconnectHandler      DisconnectHandler
+	reconnectHandler       ReconnectHandler
+	lobbyReconnectHandler  LobbyReconnectHandler
 }
 
 func NewHub() *Hub {
@@ -92,6 +96,12 @@ func (h *Hub) SetReconnectHandler(handler ReconnectHandler) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.reconnectHandler = handler
+}
+
+func (h *Hub) SetLobbyReconnectHandler(handler LobbyReconnectHandler) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.lobbyReconnectHandler = handler
 }
 
 func NewClient(id, roomID string, conn *websocket.Conn, hub *Hub) *Client {
@@ -145,6 +155,10 @@ func (h *Hub) registerClient(client *Client) {
 
 	if existing, ok := h.clients[client.ID]; ok {
 		h.removeClientLocked(existing, false)
+		if h.lobbyReconnectHandler != nil {
+			handler := h.lobbyReconnectHandler
+			go handler(client.ID)
+		}
 	}
 
 	h.clients[client.ID] = client

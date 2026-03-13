@@ -21,6 +21,7 @@ import (
 )
 
 const ReconnectTimeout = 60 * time.Second
+const LobbyReconnectTimeout = 15 * time.Second
 
 type GameService interface {
 	StartGame(ctx context.Context, req *model.StartGameRequest) (*model.Game, error)
@@ -49,8 +50,9 @@ type gameService struct {
 	wordRepo wordRepo.WordRepository
 	hub      *ws.Hub
 
-	disconnectTimers map[string]*disconnectTimer
-	timersMu         sync.Mutex
+	disconnectTimers     map[string]*disconnectTimer
+	lobbyDisconnectTimers map[string]*time.Timer
+	timersMu             sync.Mutex
 }
 
 func NewGameService(
@@ -61,16 +63,18 @@ func NewGameService(
 	hub *ws.Hub,
 ) GameService {
 	svc := &gameService{
-		gameRepo:         gameRepo,
-		roomRepo:         roomRepo,
-		userRepo:         userRepo,
-		wordRepo:         wordRepo,
-		hub:              hub,
-		disconnectTimers: make(map[string]*disconnectTimer),
+		gameRepo:              gameRepo,
+		roomRepo:              roomRepo,
+		userRepo:              userRepo,
+		wordRepo:              wordRepo,
+		hub:                   hub,
+		disconnectTimers:      make(map[string]*disconnectTimer),
+		lobbyDisconnectTimers: make(map[string]*time.Timer),
 	}
 
 	hub.SetDisconnectHandler(svc.HandleDisconnect)
 	hub.SetReconnectHandler(svc.HandleReconnect)
+	hub.SetLobbyReconnectHandler(svc.cancelLobbyTimer)
 
 	return svc
 }
@@ -485,16 +489,12 @@ func (s *gameService) HandleDisconnect(clientID, roomID string) {
 
 	game, err := s.gameRepo.GetByRoomID(ctx, roomID)
 	if err != nil {
-		s.hub.BroadcastToRoom(roomID, ws.EventUserLeft, map[string]string{
-			"user_id": clientID,
-		})
+		s.startLobbyDisconnectTimer(clientID, roomID)
 		return
 	}
 
 	if game.State != model.GameStatePlaying && game.State != model.GameStateVoting && game.State != model.GameStatePaused {
-		s.hub.BroadcastToRoom(roomID, ws.EventUserLeft, map[string]string{
-			"user_id": clientID,
-		})
+		s.startLobbyDisconnectTimer(clientID, roomID)
 		return
 	}
 
@@ -642,6 +642,56 @@ func (s *gameService) sendGameStateToUser(game *model.Game, user *userModel.User
 	}
 
 	s.hub.SendToClient(user.ID, game.RoomID, ws.EventGameStarted, payload)
+}
+
+func (s *gameService) startLobbyDisconnectTimer(clientID, roomID string) {
+	s.timersMu.Lock()
+	defer s.timersMu.Unlock()
+
+	if existing, ok := s.lobbyDisconnectTimers[clientID]; ok {
+		existing.Stop()
+	}
+	timer := time.AfterFunc(LobbyReconnectTimeout, func() {
+		s.onLobbyDisconnectTimeout(clientID, roomID)
+	})
+	s.lobbyDisconnectTimers[clientID] = timer
+}
+
+func (s *gameService) cancelLobbyTimer(clientID string) {
+	s.timersMu.Lock()
+	defer s.timersMu.Unlock()
+
+	if timer, ok := s.lobbyDisconnectTimers[clientID]; ok {
+		timer.Stop()
+		delete(s.lobbyDisconnectTimers, clientID)
+	}
+}
+
+func (s *gameService) onLobbyDisconnectTimeout(clientID, roomID string) {
+	s.timersMu.Lock()
+	delete(s.lobbyDisconnectTimers, clientID)
+	s.timersMu.Unlock()
+
+	ctx := context.Background()
+
+	user, err := s.userRepo.GetByID(ctx, clientID)
+	if err != nil {
+		return // already removed
+	}
+	if user.RoomID != roomID {
+		return // moved or already gone
+	}
+
+	if err := s.userRepo.Delete(ctx, clientID); err != nil {
+		log.Printf("Lobby timeout: failed to delete user %s: %v", clientID, err)
+		return
+	}
+
+	s.hub.BroadcastToRoom(roomID, ws.EventUserKicked, map[string]interface{}{
+		"user_id":  clientID,
+		"nickname": user.Nickname,
+		"reason":   "disconnected",
+	})
 }
 
 func (s *gameService) clearAllTimersForGame(gameID string) {

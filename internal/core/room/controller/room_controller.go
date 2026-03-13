@@ -92,6 +92,28 @@ func (c *RoomController) SetCategory(ctx *fiber.Ctx) error {
 	})
 }
 
+func (c *RoomController) KickUser(ctx *fiber.Ctx) error {
+	roomID := ctx.Params("id")
+	targetUserID := ctx.Params("userId")
+
+	var req struct {
+		LeaderID string `json:"leader_id"`
+	}
+	if err := ctx.BodyParser(&req); err != nil || req.LeaderID == "" {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "leader_id is required",
+		})
+	}
+
+	if err := c.service.KickUser(ctx.Context(), roomID, req.LeaderID, targetUserID); err != nil {
+		return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return ctx.SendStatus(fiber.StatusNoContent)
+}
+
 func (c *RoomController) DeleteRoom(ctx *fiber.Ctx) error {
 	id := ctx.Params("id")
 	var req struct {
