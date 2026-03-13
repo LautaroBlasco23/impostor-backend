@@ -1,30 +1,26 @@
-.PHONY: help install-tools code-check dev docker-up docker-down docker-build db-up db-down db-remove db-wait test start stop local-up local-down
+.PHONY: help install-tools code-check dev test full-docker-up full-docker-down local-docker-up local-docker-down docker-build docker-clean
 .DEFAULT_GOAL := help
 
 help:
 	@echo ""
-	@echo "  🚀 Quick Start:"
-	@echo "    start              - Start environment (choose local or docker)"
-	@echo "    stop               - Stop environment (choose local or docker)"
+	@echo "  Quick Start:"
+	@echo "    full-docker-up       - Start all services (nginx + api + dbs)"
+	@echo "    local-docker-up      - Start full stack without nginx (localhost ports)"
 	@echo ""
-	@echo "  🛠️  Development:"
-	@echo "    install-tools      - Install Go tools (gofumpt, golangci-lint, air, gotestsum)"
-	@echo "    code-check         - Format and lint code"
-	@echo "    dev                - Start application with databases"
-	@echo "    test               - Run tests"
+	@echo "  Development:"
+	@echo "    install-tools        - Install Go tools (gofumpt, golangci-lint, air, gotestsum)"
+	@echo "    code-check           - Format and lint code"
+	@echo "    dev                  - Start application with databases"
+	@echo "    test                 - Run tests"
 	@echo ""
-	@echo "  🐳 Docker:"
-	@echo "    docker-up          - Start all services"
-	@echo "    docker-down        - Stop services"
-	@echo "    docker-build       - Build API image"
-	@echo "    local-up           - Start full stack without nginx (localhost ports)"
-	@echo "    local-down         - Stop local full stack"
+	@echo "  Docker:"
+	@echo "    full-docker-up       - Start all services"
+	@echo "    full-docker-down     - Stop all services"
+	@echo "    local-docker-up      - Start full stack without nginx"
+	@echo "    local-docker-down    - Stop local full stack"
+	@echo "    docker-build         - Build API image"
+	@echo "    docker-clean         - Remove all containers and volumes"
 	@echo ""
-	@echo "  🗄️  Database:"
-	@echo "    db-up              - Start databases"
-	@echo "    db-down            - Stop databases"
-	@echo "    db-remove          - Remove databases and volumes"
-	@echo "    db-wait            - Wait for databases to be ready"
 
 install-tools:
 	go install mvdan.cc/gofumpt@latest
@@ -36,48 +32,34 @@ code-check:
 	gofumpt -l -w .
 	golangci-lint run --fix ./...
 
-db-wait:
-	@echo "Waiting for databases to be ready..."
+dev:
 	@until docker compose -f docker-compose.db.yml exec -T postgres pg_isready -U $${POSTGRES_USER:-postgres} > /dev/null 2>&1; do \
 		sleep 1; \
 	done
-	@echo "PostgreSQL is ready"
-
-dev: db-up db-wait
 	ENV_FILE=.env air -c .air.toml
 
-docker-up:
+test:
+	gotestsum --format=short-verbose
+
+full-docker-up:
 	@[ -f .env ] || (echo ".env not found"; exit 1)
 	docker compose --env-file .env up -d
 
-docker-down:
+full-docker-down:
 	docker compose down
+
+local-docker-up:
+	@[ -f .env ] || (echo ".env not found"; exit 1)
+	docker compose -f docker-compose.local.yml --env-file .env up -d
+
+local-docker-down:
+	docker compose -f docker-compose.local.yml down
 
 docker-build:
 	@[ -f .env ] || (echo ".env not found"; exit 1)
 	docker compose build api
 
-local-up:
-	@[ -f .env ] || (echo ".env not found"; exit 1)
-	docker compose -f docker-compose.local.yml --env-file .env up -d
-
-local-down:
-	docker compose -f docker-compose.local.yml down
-
-db-up:
-	docker compose -f docker-compose.db.yml up -d
-
-db-down:
-	docker compose -f docker-compose.db.yml stop
-
-db-remove:
+docker-clean:
+	docker compose down -v
+	docker compose -f docker-compose.local.yml down -v
 	docker compose -f docker-compose.db.yml down -v
-
-test:
-	gotestsum --format=short-verbose
-
-start:
-	@bash scripts/start.sh
-
-stop:
-	@bash scripts/stop.sh
