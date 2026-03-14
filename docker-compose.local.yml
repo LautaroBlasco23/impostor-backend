@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: impostor-api
     container_name: impostor-api
     env_file:
       - .env

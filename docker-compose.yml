@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: impostor-api
     container_name: impostor-api
     env_file:
       - .env
@@ -19,6 +20,7 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+    image: impostor-frontend
     container_name: impostor-frontend
     restart: unless-stopped
     environment:
