@@ -133,7 +133,7 @@ case $choice in
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         if docker_running; then
             echo "  Stopping Docker environment..."
-            make docker-down
+            make full-docker-down
         else
             echo "  Docker is not running — skipping stop."
         fi
@@ -159,7 +159,7 @@ case $choice in
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         if local_running; then
             echo "  Stopping Local Docker environment..."
-            make local-down
+            make local-docker-down
         else
             echo "  Local Docker is not running — skipping stop."
         fi

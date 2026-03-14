@@ -43,6 +43,37 @@ get_local_badge() {
     local_running && echo "  ${GREEN}(running)${RESET}" || echo ""
 }
 
+# Build prompt with created_at timestamp on existing images
+show_build_prompt() {
+    echo ""
+    echo "  ${BOLD}Build new images?${RESET}"
+    echo ""
+
+    local images
+    images=$(docker images --format "    • {{.Repository}}:{{.Tag}}  (created: {{.CreatedAt}})" --filter "reference=*impostor*" 2>/dev/null)
+
+    echo "    1)  Yes — build fresh images"
+    if [ -n "$images" ]; then
+        echo "    2)  No  — use existing images:"
+        echo "$images"
+    else
+        echo "    2)  No  — use existing images  (none found locally)"
+    fi
+    echo "    0)  Cancel"
+    echo ""
+    read -p "  Enter choice [0-2]: " build_choice
+
+    case $build_choice in
+        1) BUILD_FLAG="--build" ;;
+        2) BUILD_FLAG="" ;;
+        0) echo "  Cancelled"; exit 0 ;;
+        *)
+            echo "${RED}  Invalid choice${RESET}"
+            exit 1
+            ;;
+    esac
+}
+
 # Check prerequisites
 check_prerequisites() {
     case $1 in
@@ -110,11 +141,12 @@ case $choice in
         if ! check_prerequisites 1; then
             exit 1
         fi
+        show_build_prompt
         echo ""
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         echo "  Starting Docker environment..."
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
-        make docker-up
+        make full-docker-up BUILD_FLAG="$BUILD_FLAG"
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         echo "  ${GREEN}✅  Docker environment started${RESET}"
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
@@ -139,11 +171,12 @@ case $choice in
         if ! check_prerequisites 3; then
             exit 1
         fi
+        show_build_prompt
         echo ""
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         echo "  Starting Local Docker environment (no nginx)..."
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
-        make local-up
+        make local-docker-up BUILD_FLAG="$BUILD_FLAG"
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         echo "  ${GREEN}✅  Local Docker environment started${RESET}"
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
