@@ -7,9 +7,9 @@ RED=$'\033[31m'
 BOLD=$'\033[1m'
 RESET=$'\033[0m'
 
-# Check if docker is running
+# Check if full docker (with nginx) is running
 docker_running() {
-    docker compose ps --services --filter "status=running" 2>/dev/null | grep -q . 2>/dev/null
+    docker ps --filter "name=impostor-nginx" --filter "status=running" --format "{{.Names}}" 2>/dev/null | grep -q .
 }
 
 # Check if local dev is running
@@ -19,7 +19,8 @@ dev_running() {
 
 # Check if local docker (no nginx) is running
 local_running() {
-    docker compose -f docker-compose.local.yml ps --services --filter "status=running" 2>/dev/null | grep -q . 2>/dev/null
+    docker ps --filter "name=impostor-api" --filter "status=running" --format "{{.Names}}" 2>/dev/null | grep -q . && \
+    ! docker ps --filter "name=impostor-nginx" --filter "status=running" --format "{{.Names}}" 2>/dev/null | grep -q .
 }
 
 # Print banner
@@ -133,7 +134,7 @@ case $choice in
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         if docker_running; then
             echo "  Stopping Docker environment..."
-            make docker-down
+            make full-docker-down
         else
             echo "  Docker is not running — skipping stop."
         fi
@@ -159,7 +160,7 @@ case $choice in
         echo "  ${BOLD}────────────────────────────────────────────────────${RESET}"
         if local_running; then
             echo "  Stopping Local Docker environment..."
-            make local-down
+            make local-docker-down
         else
             echo "  Local Docker is not running — skipping stop."
         fi
