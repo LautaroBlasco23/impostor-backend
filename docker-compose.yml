@@ -37,6 +37,7 @@ services:
     environment:
       - FRONTEND_DOMAIN=${FRONTEND_DOMAIN}
       - API_DOMAIN=${API_DOMAIN}
+      - NGINX_ENVSUBST_TEMPLATE_VARS=FRONTEND_DOMAIN API_DOMAIN
     volumes:
       - ./nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
     depends_on:
