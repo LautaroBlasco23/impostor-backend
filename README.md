@@ -1,5 +1,13 @@
 # Game Server
 
+> **⚠️ Unmaintained / Learning Project**
+>
+> This project was built as a learning exercise to practice WebSockets, real-time game state
+> synchronization, Docker deployment, and Go backend architecture. **It is not finished and will not
+> receive further updates.** Feel free to explore the code, but don't expect it to be
+> production-ready. See the [frontend repo](https://github.com/LautaroBlasco23/impostor-frontend)
+> for the client side.
+
 A multiplayer word-guessing game server built with `Go`, `Fiber`, `Redis`, and `PostgreSQL`.
 
 This project includes a `Makefile` that provides convenient `make` commands to simplify common development tasks.
@@ -68,3 +76,12 @@ go run cmd/server/main.go
 - **PostgreSQL for persistent data**: Words are permanent and stored in PostgreSQL
 - **Layered architecture**: Clear separation between model, repository, service, and controller
 - **Interface-based design**: All repositories and services use interfaces for testability
+
+## What I Learned
+
+- WebSocket protocol design and real-time state synchronization in a turn-based game
+- Redis for volatile/TTL-based data (rooms, sessions) vs PostgreSQL for persistent data (word lists)
+- Docker multi-service orchestration (Go app + Redis + PostgreSQL + nginx reverse proxy)
+- Layered Go architecture with interface-based repositories for testability
+- Hot-reload development with Air, CI linting with golangci-lint
+- Environment-based configuration and secure deployment with nginx
